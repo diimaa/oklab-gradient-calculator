@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<title>Oklab‑градиент</title>
+<style>
+    :root { color-scheme: light dark; }
+    body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+        background: #050505;
+        color: #f5f5f5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+    }
+    .app {
+        width: min(520px, 100%);
+        background: #0f0f0f;
+        border: 1px solid #2a2a2a;
+        border-radius: 20px;
+        padding: 34px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+    }
+    h1 {
+        margin-top: 0;
+        font-size: 1.35rem;
+        text-align: center;
+        letter-spacing: 0.04em;
+    }
+    form {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        margin-bottom: 22px;
+    }
+    label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 0.92rem;
+        color: #dcdcdc;
+    }
+    input {
+        width: 100%;
+        border: 1px solid #2c2c2c;
+        background: #080808;
+        color: #fafafa;
+        padding: 12px 14px;
+        border-radius: 12px;
+        font-size: 1rem;
+        text-transform: lowercase;
+        transition: border 0.2s;
+    }
+    input:focus { border-color: #fafafa; outline: none; }
+    button {
+        border: 1px solid #fafafa;
+        background: transparent;
+        color: #fafafa;
+        padding: 12px;
+        border-radius: 12px;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s;
+    }
+    button:hover { background: #fafafa; color: #0f0f0f; }
+    .preview {
+        width: 100%;
+        height: 130px;
+        border-radius: 16px;
+        border: 1px solid #2a2a2a;
+        margin-bottom: 12px;
+        background: linear-gradient(90deg, #111111, #e3e3e3);
+    }
+    .error {
+        min-height: 1.2em;
+        color: #ff7b7b;
+        text-align: center;
+        margin-bottom: 6px;
+    }
+    .result, .stops {
+        text-align: center;
+        font-size: 0.95rem;
+        color: #e0e0e0;
+        line-height: 1.4;
+    }
+</style>
+</head>
+<body>
+<div class="app">
+    <h1>Oklab‑градиент</h1>
+    <form id="gradient-form">
+        <div>
+            <label for="startColor">Начальный цвет (HEX)</label>
+            <input id="startColor" type="text" value="#111111" maxlength="7" autocomplete="off" />
+        </div>
+        <div>
+            <label for="endColor">Конечный цвет (HEX)</label>
+            <input id="endColor" type="text" value="#e3e3e3" maxlength="7" autocomplete="off" />
+        </div>
+        <button type="submit">Показать градиент</button>
+    </form>
+
+    <div class="error" id="errorBox"></div>
+    <div class="preview" id="gradientPreview"></div>
+    <div class="stops" id="stopList">Промежуточных цветов пока нет.</div>
+    <div class="result" id="resultBox">Введите цвета, чтобы увидеть расчет.</div>
+</div>
+
+<script>
+const hexRegex = /^#([0-9a-fA-F]{6})$/;
+
+const normalizeHex = (value) => {
+    if (!value) return null;
+    let hex = value.trim().toLowerCase();
+    if (!hex.startsWith("#")) hex = "#" + hex;
+    return hexRegex.test(hex) ? hex : null;
+};
+
+const hexToSrgb = (hex) => {
+    const v = hex.slice(1);
+    return {
+        r: parseInt(v.slice(0, 2), 16) / 255,
+        g: parseInt(v.slice(2, 4), 16) / 255,
+        b: parseInt(v.slice(4, 6), 16) / 255
+    };
+};
+
+const srgbToHex = ({ r, g, b }) => {
+    const toHex = (c) => {
+        const v = Math.round(Math.min(Math.max(c, 0), 1) * 255);
+        return v.toString(16).padStart(2, "0");
+    };
+    return "#" + toHex(r) + toHex(g) + toHex(b);
+};
+
+const srgbToLinear = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+const linearToSrgb = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+
+const linearSrgbToOklab = ({ r, g, b }) => {
+    const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
+    const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
+    const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b;
+
+    const l_ = Math.cbrt(l);
+    const m_ = Math.cbrt(m);
+    const s_ = Math.cbrt(s);
+
+    return {
+        L: 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+        a: 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+        b: 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
+    };
+};
+
+const oklabToLinearSrgb = ({ L, a, b }) => {
+    const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+    const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+    const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+
+    const l = l_ * l_ * l_;
+    const m = m_ * m_ * m_;
+    const s = s_ * s_ * s_;
+
+    return {
+        r: +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        g: -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        b: -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+    };
+};
+
+const srgbToOklab = (srgb) => {
+    const linear = {
+        r: srgbToLinear(srgb.r),
+        g: srgbToLinear(srgb.g),
+        b: srgbToLinear(srgb.b)
+    };
+    return linearSrgbToOklab(linear);
+};
+
+const oklabToSrgb = (ok) => {
+    const linear = oklabToLinearSrgb(ok);
+    return {
+        r: linearToSrgb(linear.r),
+        g: linearToSrgb(linear.g),
+        b: linearToSrgb(linear.b)
+    };
+};
+
+const countUniqueColors = (hexA, hexB) => {
+    const a = hexToSrgb(hexA);
+    const b = hexToSrgb(hexB);
+    const diffR = Math.abs(Math.round(a.r * 255) - Math.round(b.r * 255));
+    const diffG = Math.abs(Math.round(a.g * 255) - Math.round(b.g * 255));
+    const diffB = Math.abs(Math.round(a.b * 255) - Math.round(b.b * 255));
+    return Math.max(diffR, diffG, diffB) + 1;
+};
+
+const buildStops = (startHex, endHex, maxIntermediate = 8) => {
+    const startLab = srgbToOklab(hexToSrgb(startHex));
+    const endLab = srgbToOklab(hexToSrgb(endHex));
+    const totalColors = countUniqueColors(startHex, endHex);
+    const possibleIntermediates = Math.max(0, totalColors - 2);
+    const intermediateCount = Math.min(
+        maxIntermediate,
+        Math.min(possibleIntermediates, Math.ceil(totalColors / 96))
+    );
+
+    const stops = [];
+    const step = 1 / (intermediateCount + 1);
+    for (let i = 0; i <= intermediateCount + 1; i++) {
+        const t = i * step;
+        const lab = {
+            L: startLab.L + (endLab.L - startLab.L) * t,
+            a: startLab.a + (endLab.a - startLab.a) * t,
+            b: startLab.b + (endLab.b - startLab.b) * t
+        };
+        const srgb = oklabToSrgb(lab);
+        stops.push({
+            hex: srgbToHex(srgb),
+            position: Math.round(t * 100)
+        });
+    }
+    return { stops, totalColors, intermediateCount };
+};
+
+const form = document.getElementById("gradient-form");
+const startInput = document.getElementById("startColor");
+const endInput = document.getElementById("endColor");
+const preview = document.getElementById("gradientPreview");
+const resultBox = document.getElementById("resultBox");
+const errorBox = document.getElementById("errorBox");
+const stopList = document.getElementById("stopList");
+
+const updateGradient = () => {
+    const startHex = normalizeHex(startInput.value);
+    const endHex = normalizeHex(endInput.value);
+
+    if (!startHex || !endHex) {
+        errorBox.textContent = "Введите HEX формата #000000.";
+        preview.style.background = "#070707";
+        stopList.textContent = "Промежуточных цветов нет.";
+        resultBox.textContent = "Нет расчета: некорректные значения.";
+        return;
+    }
+
+    errorBox.textContent = "";
+    const { stops, totalColors } = buildStops(startHex, endHex);
+    const gradientCSS = stops
+        .map((stop) => `${stop.hex} ${stop.position}%`)
+        .join(", ");
+    preview.style.background = `linear-gradient(90deg, ${gradientCSS})`;
+
+    const intermediates = stops.slice(1, -1);
+    stopList.textContent = intermediates.length
+        ? intermediates.map((s) => `${s.hex.toUpperCase()} (${s.position}%)`).join(", ")
+        : "Промежуточных цветов нет — используются только границы.";
+
+    resultBox.textContent = `Уникальных оттенков (включая границы): ${totalColors.toLocaleString("ru-RU")}`;
+};
+
+form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    updateGradient();
+});
+
+window.addEventListener("DOMContentLoaded", updateGradient);
+</script>
+</body>
+</html>
