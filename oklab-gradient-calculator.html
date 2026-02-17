@@ -17,7 +17,7 @@
         padding: 24px;
     }
     .app {
-        width: min(520px, 100%);
+        width: min(560px, 100%);
         background: #0f0f0f;
         border: 1px solid #2a2a2a;
         border-radius: 20px;
@@ -79,11 +79,23 @@
         text-align: center;
         margin-bottom: 6px;
     }
-    .result, .stops {
+    .stops, .result {
         text-align: center;
         font-size: 0.95rem;
-        color: #e0e0e0;
         line-height: 1.4;
+        color: #e0e0e0;
+    }
+    textarea {
+        width: 100%;
+        min-height: 140px;
+        margin: 14px 0;
+        border-radius: 12px;
+        border: 1px solid #2c2c2c;
+        background: #080808;
+        color: #cfcfcf;
+        padding: 12px;
+        font-size: 0.9rem;
+        resize: vertical;
     }
 </style>
 </head>
@@ -105,6 +117,8 @@
     <div class="error" id="errorBox"></div>
     <div class="preview" id="gradientPreview"></div>
     <div class="stops" id="stopList">Промежуточных цветов пока нет.</div>
+    <label for="fullColorList">Все уникальные оттенки (HEX):</label>
+    <textarea id="fullColorList" readonly>Список появится после расчета.</textarea>
     <div class="result" id="resultBox">Введите цвета, чтобы увидеть расчет.</div>
 </div>
 
@@ -197,7 +211,7 @@ const countUniqueColors = (hexA, hexB) => {
     return Math.max(diffR, diffG, diffB) + 1;
 };
 
-const buildStops = (startHex, endHex, maxIntermediate = 8) => {
+const buildPreviewStops = (startHex, endHex, maxIntermediate = 8) => {
     const startLab = srgbToOklab(hexToSrgb(startHex));
     const endLab = srgbToOklab(hexToSrgb(endHex));
     const totalColors = countUniqueColors(startHex, endHex);
@@ -208,9 +222,9 @@ const buildStops = (startHex, endHex, maxIntermediate = 8) => {
     );
 
     const stops = [];
-    const step = 1 / (intermediateCount + 1);
+    const step = 1 / (intermediateCount + 1 || 1);
     for (let i = 0; i <= intermediateCount + 1; i++) {
-        const t = i * step;
+        const t = (intermediateCount + 1 === 0) ? 0 : i * step;
         const lab = {
             L: startLab.L + (endLab.L - startLab.L) * t,
             a: startLab.a + (endLab.a - startLab.a) * t,
@@ -222,7 +236,30 @@ const buildStops = (startHex, endHex, maxIntermediate = 8) => {
             position: Math.round(t * 100)
         });
     }
-    return { stops, totalColors, intermediateCount };
+    return { stops, totalColors };
+};
+
+const buildFullSequence = (startHex, endHex, totalColors) => {
+    const startLab = srgbToOklab(hexToSrgb(startHex));
+    const endLab = srgbToOklab(hexToSrgb(endHex));
+    const colors = [];
+
+    if (totalColors === 1) {
+        colors.push(startHex.toUpperCase());
+        return colors;
+    }
+
+    for (let i = 0; i < totalColors; i++) {
+        const t = i / (totalColors - 1);
+        const lab = {
+            L: startLab.L + (endLab.L - startLab.L) * t,
+            a: startLab.a + (endLab.a - startLab.a) * t,
+            b: startLab.b + (endLab.b - startLab.b) * t
+        };
+        const srgb = oklabToSrgb(lab);
+        colors.push(srgbToHex(srgb).toUpperCase());
+    }
+    return colors;
 };
 
 const form = document.getElementById("gradient-form");
@@ -232,6 +269,7 @@ const preview = document.getElementById("gradientPreview");
 const resultBox = document.getElementById("resultBox");
 const errorBox = document.getElementById("errorBox");
 const stopList = document.getElementById("stopList");
+const fullColorList = document.getElementById("fullColorList");
 
 const updateGradient = () => {
     const startHex = normalizeHex(startInput.value);
@@ -241,12 +279,13 @@ const updateGradient = () => {
         errorBox.textContent = "Введите HEX формата #000000.";
         preview.style.background = "#070707";
         stopList.textContent = "Промежуточных цветов нет.";
+        fullColorList.value = "Список появится после расчета.";
         resultBox.textContent = "Нет расчета: некорректные значения.";
         return;
     }
 
     errorBox.textContent = "";
-    const { stops, totalColors } = buildStops(startHex, endHex);
+    const { stops, totalColors } = buildPreviewStops(startHex, endHex);
     const gradientCSS = stops
         .map((stop) => `${stop.hex} ${stop.position}%`)
         .join(", ");
@@ -256,6 +295,9 @@ const updateGradient = () => {
     stopList.textContent = intermediates.length
         ? intermediates.map((s) => `${s.hex.toUpperCase()} (${s.position}%)`).join(", ")
         : "Промежуточных цветов нет — используются только границы.";
+
+    const allColors = buildFullSequence(startHex, endHex, totalColors);
+    fullColorList.value = allColors.join(", ");
 
     resultBox.textContent = `Уникальных оттенков (включая границы): ${totalColors.toLocaleString("ru-RU")}`;
 };
