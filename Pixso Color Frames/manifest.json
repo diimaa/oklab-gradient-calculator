@@ -1,0 +1,9 @@
+{
+  "name": "Pixso Color Frames",
+  "id": "pixso-color-frames",
+  "api": "1.0.0",
+  "main": "main.js",
+  "ui": "ui.html",
+  "editorType": ["pixso"],
+  "permissions": ["currentpage"]
+}

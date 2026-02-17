@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body {
+      font-family: Inter, sans-serif;
+      margin: 16px;
+      color: #111;
+    }
+    textarea {
+      width: 100%;
+      height: 120px;
+      padding: 12px;
+      border: 1px solid #d0d0d0;
+      border-radius: 8px;
+      resize: vertical;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 12px;
+      border: none;
+      border-radius: 8px;
+      background: #5c6eff;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .step {
+      margin-top: 20px;
+      padding: 16px;
+      border: 1px solid #e2e2e2;
+      border-radius: 12px;
+    }
+    .error {
+      color: #c62828;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Шаг 1. Список цветов</h2>
+  <p>Введите HEX-коды через запятую, например:<br />#FF0000, #00FF00, #0000FF</p>
+  <textarea id="hexInput" placeholder="#FCB900, #7BDCB5, #ABB8C3"></textarea>
+  <button id="parseBtn">Продолжить</button>
+  <div id="error" class="error"></div>
+
+  <div id="step2" class="step" hidden>
+    <h3>Шаг 2. Подтверждение</h3>
+    <p>Найдено цветов: <strong id="colorCount">0</strong></p>
+    <button id="generateBtn" disabled>Сгенерировать 0 фреймов</button>
+  </div>
+
+  <script>
+    const parseBtn = document.getElementById('parseBtn');
+    const generateBtn = document.getElementById('generateBtn');
+    const colorCount = document.getElementById('colorCount');
+    const errorBox = document.getElementById('error');
+    const step2 = document.getElementById('step2');
+    const hexInput = document.getElementById('hexInput');
+
+    parseBtn.onclick = () => {
+      errorBox.textContent = '';
+      parent.postMessage({ pluginMessage: { type: 'parseColors', payload: hexInput.value } }, '*');
+    };
+
+    generateBtn.onclick = () => {
+      parent.postMessage({ pluginMessage: { type: 'generateFrames' } }, '*');
+    };
+
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      if (msg.type === 'colorCount') {
+        colorCount.textContent = msg.count;
+        generateBtn.textContent = `Сгенерировать ${msg.count} фреймов`;
+        generateBtn.disabled = msg.count === 0;
+        step2.hidden = false;
+      }
+
+      if (msg.type === 'error') {
+        errorBox.textContent = msg.message;
+      }
+    };
+  </script>
+</body>
+</html>
